@@ -3889,8 +3889,12 @@ export default function Studio() {
                       </thead>
                       <tbody>
                         <Paginated
-                          items={data.invites}
+                          items={[...data.invites].sort(
+                            (a, b) =>
+                              Date.parse(b.created_at) - Date.parse(a.created_at),
+                          )}
                           resetKey={[
+                            data.invites.length,
                             tab,
                             filter,
                             memberFilter,
