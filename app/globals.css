@@ -2979,7 +2979,7 @@ html[lang="en"] .btn {
 
 /* Keep selected light actions readable on hover. */
 .btn.light:hover:not(:disabled) {
-  background: #dbc5aa;
+  background: var(--row);
 }
 .package-card .price {
   background: var(--row);
