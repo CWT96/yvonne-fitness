@@ -2986,3 +2986,11 @@ html[lang="en"] .btn {
   border-radius: 10px;
   padding: 12px;
 }
+
+.member-choices .slot-choice-list {
+  max-height: 250px;
+  overflow-y: auto;
+}
+.member-choices input[type="checkbox"] {
+  flex-shrink: 0;
+}

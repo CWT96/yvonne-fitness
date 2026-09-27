@@ -866,5 +866,6 @@
   "Stripe 线上指导": "Stripe online coaching",
   "付款成功，但线上服务日期与已有记录重叠；请教练核对并处理。": "Payment succeeded, but online coaching dates overlap existing coverage. Please contact your coach for review.",
   "付款已确认，但线上服务日期重叠，请联系教练核对。": "Payment confirmed, but online coaching dates overlap. Please contact your coach for review.",
-  "已有线上服务，请到期后再购买": "Online coaching already exists. Please purchase again after it expires."
+  "已有线上服务，请到期后再购买": "Online coaching already exists. Please purchase again after it expires.",
+  "{0} · {1}。仅取消这位学员的预约；该时段没有其他预约时才会重新开放。{2}": "{0} · {1}. Only this member’s booking will be cancelled. The time becomes available again when no other bookings remain.{2}"
 }

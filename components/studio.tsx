@@ -50,7 +50,11 @@ import {
 } from "lucide-react";
 import { configured, supabase } from "@/lib/supabase";
 import { demoData } from "@/lib/demo";
-import { availableBookingSlots, compareBookings } from "@/lib/booking";
+import {
+  availableBookingSlots,
+  compareBookings,
+  slotsOverlap,
+} from "@/lib/booking";
 import { bookingMatches, memberNeeds } from "@/lib/workflows";
 import { SessionAccounts } from "@/components/session-accounts";
 import {
@@ -254,7 +258,27 @@ function DialogView({
       )}
       <form onSubmit={onSubmit}>
         {dialog.fields.map((f) =>
-          f.type === "slots" ? (
+          f.type === "members" ? (
+            <fieldset className="slot-choices member-choices" key={f.name}>
+              <legend>{t(f.label)} *</legend>
+              <div className="slot-choice-list">
+                {f.options?.map((o) => (
+                  <label className="slot-choice" key={o.value}>
+                    <input
+                      type="checkbox"
+                      name={f.name}
+                      value={o.value}
+                      defaultChecked={String(f.value || "")
+                        .split(",")
+                        .includes(o.value)}
+                    />
+                    <span>{o.label}</span>
+                  </label>
+                ))}
+              </div>
+              <small>{t(f.hint)}</small>
+            </fieldset>
+          ) : f.type === "slots" ? (
             <fieldset className="slot-choices" key={f.name}>
               <legend>
                 {t(f.label)}
@@ -269,7 +293,11 @@ function DialogView({
                     const form = ref.current?.querySelector("form");
                     dialog.alternate?.action(
                       form
-                        ? String(new FormData(form).get("p_member") || "")
+                        ? new FormData(form)
+                            .getAll("p_members")
+                            .map(String)
+                            .join(",") ||
+                            String(new FormData(form).get("p_member") || "")
                         : undefined,
                     );
                   }}
@@ -782,6 +810,19 @@ export default function Studio() {
       ? t("请确认内容归属的学员。")
       : t("暂无可用学员，请先邀请学员注册或恢复学员账号。"),
   });
+  const bookingMembersField = (ids?: string): Field => ({
+    name: "p_members",
+    label: "学员（可多选）",
+    type: "members",
+    value:
+      ids ||
+      (memberOptions.some((m) => m.value === memberFilter) ? memberFilter : ""),
+    required: true,
+    options: memberOptions,
+    hint: memberOptions.length
+      ? "勾选一起上课的学员；每位学员独立记录、通知和扣课。"
+      : "暂无可用学员，请先邀请学员注册或恢复学员账号。",
+  });
   async function mutate(fn: string, args: Record<string, unknown>) {
     if (demo) {
       demoMutate(fn, args);
@@ -807,9 +848,11 @@ export default function Studio() {
           previous = n.appointments.find((b) => b.id === aId);
         if (previous) {
           const slotId = crypto.randomUUID();
-          const overlap =
-            previous.slots.starts_at < String(a.p_end) &&
-            previous.slots.ends_at > String(a.p_start);
+          const overlap = slotsOverlap(
+            previous.slots,
+            String(a.p_start),
+            String(a.p_end),
+          );
           n.slots = n.slots
             .filter((s) => !overlap || s.id !== previous.slot_id)
             .map((s) =>
@@ -827,6 +870,39 @@ export default function Studio() {
             ends_at: String(a.p_end),
           };
           previous.reason = String(a.p_message || "");
+        }
+      }
+      if (fn === "book_members") {
+        let slot = n.slots.find((s) => s.id === a.p_slot);
+        if (!slot) {
+          slot = {
+            id: crypto.randomUUID(),
+            starts_at: String(a.p_start),
+            ends_at: String(a.p_end),
+            available: false,
+          };
+          n.slots.push(slot);
+        }
+        for (const member of new Set(a.p_members as string[])) {
+          if (
+            n.appointments.some(
+              (b) =>
+                b.slot_id === slot!.id &&
+                b.member_id === member &&
+                b.status !== "cancelled",
+            )
+          )
+            continue;
+          n.appointments.push({
+            id: crypto.randomUUID(),
+            member_id: member,
+            slot_id: slot.id,
+            status: "booked",
+            message: String(a.p_message || ""),
+            reason: "",
+            created_at: now,
+            slots: { starts_at: slot.starts_at, ends_at: slot.ends_at },
+          });
         }
       }
       if (fn === "book_new_slot") {
@@ -1123,6 +1199,12 @@ export default function Studio() {
             : m,
         );
 
+      n.slots = n.slots.map((s) => ({
+        ...s,
+        available: !n.appointments.some(
+          (b) => b.slot_id === s.id && b.status !== "cancelled",
+        ),
+      }));
       return n;
     });
   }
@@ -1134,6 +1216,8 @@ export default function Studio() {
     if (submitter instanceof HTMLButtonElement && submitter.name)
       formData.set(submitter.name, submitter.value);
     const values = Object.fromEntries(formData) as Record<string, string>;
+    if (dialog.fields.some((f) => f.type === "members"))
+      values.p_members = formData.getAll("p_members").map(String).join(",");
     setBusy(true);
     setError("");
     try {
@@ -1175,7 +1259,12 @@ export default function Studio() {
         latestSlots = schedule || [];
         setData((previous) => ({ ...previous, slots: latestSlots }));
       }
-      const available = availableBookingSlots(latestSlots, existing?.slot_id);
+      const available = availableBookingSlots(
+        coach
+          ? latestSlots.map((s) => ({ ...s, available: true }))
+          : latestSlots,
+        existing?.slot_id,
+      );
       setDialog({
         alternate: coach
           ? {
@@ -1207,7 +1296,7 @@ export default function Studio() {
             : "",
         ]),
         fields: [
-          ...(coach && !existing ? [memberField(member)] : []),
+          ...(coach && !existing ? [bookingMembersField(member)] : []),
           {
             name: "p_slot",
             label: t("训练时间"),
@@ -1223,7 +1312,7 @@ export default function Studio() {
                 ),
             options: available.map((s) => ({
               value: s.id,
-              label: `${displayTime(s.starts_at, zone, t("yyyy年MM月dd日 EEE HH:mm"))} – ${displayTime(s.ends_at, zone, "HH:mm")}`,
+              label: `${displayTime(s.starts_at, zone, t("yyyy年MM月dd日 EEE HH:mm"))} – ${displayTime(s.ends_at, zone, "HH:mm")}${coach && latestSlots.find((item) => item.id === s.id)?.available === false ? " · 已有预约，可添加同行学员" : ""}`,
             })),
           },
           {
@@ -1240,6 +1329,14 @@ export default function Studio() {
         action: async (v) => {
           if (!available.some((s) => s.id === v.p_slot))
             throw new Error(t("请选择一个可预约的训练时间。"));
+          if (coach && !existing) {
+            await mutate("book_members", {
+              p_members: v.p_members.split(","),
+              p_slot: v.p_slot,
+              p_message: v.p_message,
+            });
+            return;
+          }
           await mutate("manage_booking", {
             p_action: existing ? "reschedule" : "book",
             p_slot: v.p_slot,
@@ -1260,11 +1357,14 @@ export default function Studio() {
   function cancelBooking(b: Appointment) {
     setDialog({
       title: t("取消这次预约"),
-      description: t("{0} · {1}。取消后，这个时间将重新开放。{2}", [
-        name(b.member_id),
-        displayTime(b.slots.starts_at, zone),
-        !coach ? `\n${t(changeReminder)}` : "",
-      ]),
+      description: t(
+        "{0} · {1}。仅取消这位学员的预约；该时段没有其他预约时才会重新开放。{2}",
+        [
+          name(b.member_id),
+          displayTime(b.slots.starts_at, zone),
+          !coach ? `\n${t(changeReminder)}` : "",
+        ],
+      ),
       fields: [
         { name: "p_message", label: t("取消原因（选填）"), type: "textarea" },
       ],
@@ -1324,7 +1424,7 @@ export default function Studio() {
           : t("保存后同时新增时段并为学员预约。"),
       ]),
       fields: [
-        ...(!existing ? [memberField(member)] : []),
+        ...(!existing ? [bookingMembersField(member)] : []),
         {
           name: "start",
           label: t("开始时间"),
@@ -1357,17 +1457,14 @@ export default function Studio() {
           throw new Error(t("请选择未来的有效时段（最长 4 小时）"));
         if (
           data.slots.some(
-            (s) =>
-              s.id !== existing?.slot_id &&
-              s.starts_at < end &&
-              s.ends_at > start,
+            (s) => s.id !== existing?.slot_id && slotsOverlap(s, start, end),
           )
         )
           throw new Error(t("时间段与现有安排重叠，请选择已有时段或调整时间"));
-        await mutate(existing ? "reschedule_new_slot" : "book_new_slot", {
+        await mutate(existing ? "reschedule_new_slot" : "book_members", {
           ...(existing
             ? { p_appointment: existing.id }
-            : { p_member: v.p_member }),
+            : { p_members: v.p_members.split(",") }),
           p_start: start,
           p_end: end,
           p_message: v.p_message,
@@ -1378,7 +1475,10 @@ export default function Studio() {
   function addSlot() {
     setDialog({
       title: t("开放可预约时间"),
-      description: t("按 {0} 输入时间。每个时段可预约一位学员。", [zone]),
+      description: t(
+        "按 {0} 输入时间，无需按先后顺序添加。学员自行预约为单人，教练可安排多人同行。",
+        [zone],
+      ),
       fields: [
         {
           name: "start",
@@ -1403,7 +1503,11 @@ export default function Studio() {
           new Date(end).getTime() - new Date(start).getTime() > 14400000
         )
           throw new Error(t("请选择未来的有效时段（最长 4 小时）"));
-        if (data.slots.some((s) => s.starts_at < end && s.ends_at > start))
+        if (
+          data.slots.some(
+            (s) => s.active !== false && slotsOverlap(s, start, end),
+          )
+        )
           throw new Error(t("时间段与现有安排重叠"));
         await mutate("save_slot", { p_start: start, p_end: end });
       },
@@ -3028,7 +3132,10 @@ export default function Studio() {
                         {days[6].slice(5).replace("-", ".")}
                       </h2>
                       <p className="muted">
-                        {zone} {t("· 每个时段仅接受一位学员")}
+                        {zone}{" "}
+                        {coach
+                          ? "· 可为同行学员安排同一时段"
+                          : t("· 每个时段仅接受一位学员")}
                       </p>
                     </div>
                     <div className="row gap">
@@ -3144,6 +3251,11 @@ export default function Studio() {
                                 displayTime(s.starts_at, zone, "yyyy-MM-dd") ===
                                 day,
                             )
+                            .sort(
+                              (a, b) =>
+                                Date.parse(a.starts_at) -
+                                Date.parse(b.starts_at),
+                            )
                             .map((s) => (
                               <div
                                 className={`slot ${s.available ? "available" : "taken"}`}
@@ -3156,9 +3268,13 @@ export default function Studio() {
                                 <strong>
                                   {s.available ? t("可预约") : t("已预约")}
                                 </strong>
-                                {s.available && (
+                                {(coach || s.available) && (
                                   <button onClick={() => book(s)}>
-                                    {coach ? t("代预约") : t("预约")}{" "}
+                                    {coach
+                                      ? s.available
+                                        ? t("代预约")
+                                        : "添加同行学员"
+                                      : t("预约")}{" "}
                                     <Plus size={13} />
                                   </button>
                                 )}
@@ -3891,7 +4007,8 @@ export default function Studio() {
                         <Paginated
                           items={[...data.invites].sort(
                             (a, b) =>
-                              Date.parse(b.created_at) - Date.parse(a.created_at),
+                              Date.parse(b.created_at) -
+                              Date.parse(a.created_at),
                           )}
                           resetKey={[
                             data.invites.length,
