@@ -17,6 +17,7 @@ export default function VerifyEmail() {
   const [error, setError] = useState("");
   const [hint, setHint] = useState("");
   const [cooldown, setCooldown] = useState(0);
+  const [signupSent, setSignupSent] = useState(false);
   const locked = useRef(false);
   useEffect(() => {
     setPurpose(
@@ -24,8 +25,21 @@ export default function VerifyEmail() {
         new URLSearchParams(window.location.search).get("type"),
       ),
     );
+    const params = new URLSearchParams(window.location.search);
+    setSignupSent(
+      params.get("type") === "signup" && params.get("sent") === "1",
+    );
     try {
       setEmail(sessionStorage.getItem("yvonne-verification-email") || "");
+      const sentAt = Number(
+        sessionStorage.getItem("yvonne-verification-sent-at") || 0,
+      );
+      setCooldown(
+        Math.max(
+          0,
+          Math.min(60, Math.ceil((sentAt + 60000 - Date.now()) / 1000)),
+        ),
+      );
     } catch {}
     // Visiting this page never verifies a token or sends an email.
   }, []);
@@ -58,6 +72,7 @@ export default function VerifyEmail() {
       }
       try {
         sessionStorage.removeItem("yvonne-verification-email");
+        sessionStorage.removeItem("yvonne-verification-sent-at");
       } catch {}
       window.location.replace(result.recovery ? "/?recovery=1" : "/");
     } catch (e) {
@@ -84,6 +99,9 @@ export default function VerifyEmail() {
     setHint("");
     setCooldown(60);
     try {
+      sessionStorage.setItem("yvonne-verification-sent-at", String(Date.now()));
+    } catch {}
+    try {
       if (!supabase) throw new Error("Supabase 尚未配置");
       await resendEmailCode(
         supabase.auth,
@@ -108,28 +126,57 @@ export default function VerifyEmail() {
           <LanguageSelect disabled={busy} />
         </div>
         <p className="eyebrow">YVONNE FITNESS</p>
-        <h1>{t("输入邮件验证码")}</h1>
-        <p className="muted">
-          {t("打开邮件，将验证码填写在这里。仅打开本页不会使用验证码。")}
-        </p>
+        {signupSent && (
+          <p className="verification-step">
+            {t("第 2 步 / 共 2 步 · 验证邮箱")}
+          </p>
+        )}
+        <h1>{t(signupSent ? "请查看邮箱，完成注册" : "输入邮件验证码")}</h1>
+        {signupSent ? (
+          <>
+            <div className="success-box" role="status">
+              <strong>{t("注册申请已提交")}</strong>
+              <p>
+                {t(
+                  "验证码已发送，请在下方输入以完成邮箱验证。无需再次创建账号。",
+                )}
+              </p>
+              {email && <strong className="verification-email">{email}</strong>}
+            </div>
+            <div className="verification-help">
+              <strong>{t("没看到邮件？请检查垃圾邮件 / Spam 文件夹。")}</strong>
+              <p>
+                {t(
+                  "邮件可能需要几分钟送达。若在垃圾邮件中找到，请标记为“非垃圾邮件”。需要重新发送时，请使用下方按钮，并输入最新验证码。",
+                )}
+              </p>
+            </div>
+          </>
+        ) : (
+          <p className="muted">
+            {t("打开邮件，将验证码填写在这里。仅打开本页不会使用验证码。")}
+          </p>
+        )}
         <form onSubmit={submit}>
-          <label>
-            {t("验证用途")}
-            <select
-              value={purpose}
-              disabled={busy}
-              onChange={(e) => {
-                setPurpose(verificationPurpose(e.target.value));
-                setCode("");
-                setError("");
-                setHint("");
-              }}
-            >
-              <option value="signup">{t("注册邮箱验证")}</option>
-              <option value="recovery">{t("重置密码")}</option>
-              <option value="email_change">{t("更改邮箱")}</option>
-            </select>
-          </label>
+          {!signupSent && (
+            <label>
+              {t("验证用途")}
+              <select
+                value={purpose}
+                disabled={busy}
+                onChange={(e) => {
+                  setPurpose(verificationPurpose(e.target.value));
+                  setCode("");
+                  setError("");
+                  setHint("");
+                }}
+              >
+                <option value="signup">{t("注册邮箱验证")}</option>
+                <option value="recovery">{t("重置密码")}</option>
+                <option value="email_change">{t("更改邮箱")}</option>
+              </select>
+            </label>
+          )}
           <label>
             {t(purpose === "email_change" ? "接收验证码的邮箱" : "邮箱")}
             <input
@@ -179,7 +226,13 @@ export default function VerifyEmail() {
             </p>
           )}
           <button className="btn full" disabled={busy}>
-            {t(busy ? "请稍候…" : "验证并继续")}
+            {t(
+              busy
+                ? "请稍候…"
+                : signupSent
+                  ? "验证邮箱并进入网站"
+                  : "验证并继续",
+            )}
           </button>
         </form>
         <div className="auth-links">

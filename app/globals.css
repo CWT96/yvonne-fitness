@@ -2994,3 +2994,28 @@ html[lang="en"] .btn {
 .member-choices input[type="checkbox"] {
   flex-shrink: 0;
 }
+
+.verification-step {
+  color: var(--action);
+  font-size: 13px;
+  font-weight: 600;
+  margin-top: 16px;
+}
+.verification-help {
+  background: var(--row);
+  border: 1px solid var(--line);
+  padding: 16px;
+  border-radius: 10px;
+  margin: 18px 0;
+  font-size: 13px;
+  line-height: 1.7;
+}
+.verification-help p {
+  margin-top: 6px;
+  color: var(--muted);
+}
+.verification-email {
+  display: block;
+  overflow-wrap: anywhere;
+  margin-top: 8px;
+}

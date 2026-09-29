@@ -498,6 +498,7 @@ export default function Studio() {
   >("login");
   const [showAuth, setShowAuth] = useState(false);
   const [authHint, setAuthHint] = useState("");
+  const authSubmitting = useRef(false);
   const [loadError, setLoadError] = useState("");
   const latestRead = useRef(new LatestRead());
   const sessionOwner = useRef<string | null>(null);
@@ -1969,6 +1970,9 @@ export default function Studio() {
       setError(t("请先按部署说明连接 Supabase。演示模式不创建真实账号。"));
       return;
     }
+    if (authSubmitting.current) return;
+    authSubmitting.current = true;
+    let navigating = false;
     const f = Object.fromEntries(new FormData(e.currentTarget));
     setBusy(true);
     setError("");
@@ -1983,7 +1987,7 @@ export default function Studio() {
         throw new Error(t("两次输入的密码不一致"));
       if (authMode === "register") {
         if (!String(f.full_name || "").trim()) throw new Error(t("请填写姓名"));
-        const { error } = await supabase.auth.signUp({
+        const { data: signup, error } = await supabase.auth.signUp({
           email,
           password,
           options: {
@@ -1998,11 +2002,17 @@ export default function Studio() {
         });
         if (error) throw error;
         rememberVerificationEmail(email);
-        setAuthHint(
-          t(
-            "验证邮件已发送。如邮件包含验证码，请点击下方入口输入；若收到旧版链接，仍可使用原链接验证。",
-          ),
+        try {
+          sessionStorage.setItem(
+            "yvonne-verification-sent-at",
+            String(Date.now()),
+          );
+        } catch {}
+        navigating = true;
+        window.location.replace(
+          signup.session ? "/" : "/auth/verify?type=signup&sent=1",
         );
+        return;
       }
       if (authMode === "login") {
         const { error } = await supabase.auth.signInWithPassword({
@@ -2044,7 +2054,10 @@ export default function Studio() {
             : message,
       );
     } finally {
-      setBusy(false);
+      if (!navigating) {
+        authSubmitting.current = false;
+        setBusy(false);
+      }
     }
   }
   const flash = (
