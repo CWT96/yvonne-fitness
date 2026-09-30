@@ -3019,3 +3019,31 @@ html[lang="en"] .btn {
   overflow-wrap: anywhere;
   margin-top: 8px;
 }
+
+/* Coach calendar: occupied sessions stand out and show every participant. */
+.coach-calendar .slot.taken {
+  background: var(--selection);
+  border-color: var(--primary);
+  border-left: 4px solid var(--action);
+  color: var(--ink);
+}
+.coach-calendar .slot.taken > strong {
+  color: var(--action);
+  font-weight: 700;
+}
+.coach-calendar .slot.taken button {
+  background: var(--white);
+}
+.coach-calendar .slot-members {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0;
+  display: grid;
+  gap: 5px;
+}
+.coach-calendar .slot-members li {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}

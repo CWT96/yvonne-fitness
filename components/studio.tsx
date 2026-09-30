@@ -3245,7 +3245,7 @@ export default function Studio() {
                       )}
                     </div>
                   ) : (
-                    <div className="calendar-grid">
+                    <div className="calendar-grid coach-calendar">
                       {days.map((day) => (
                         <div className="calendar-day" key={day}>
                           <div className="day-heading">
@@ -3281,6 +3281,24 @@ export default function Studio() {
                                 <strong>
                                   {s.available ? t("可预约") : t("已预约")}
                                 </strong>
+                                {coach && !s.available && (
+                                  <ul
+                                    className="slot-members"
+                                    aria-label="已预约学员"
+                                  >
+                                    {data.appointments
+                                      .filter(
+                                        (appointment) =>
+                                          appointment.slot_id === s.id &&
+                                          appointment.status !== "cancelled",
+                                      )
+                                      .map((appointment) => (
+                                        <li key={appointment.id}>
+                                          {name(appointment.member_id)}
+                                        </li>
+                                      ))}
+                                  </ul>
+                                )}
                                 {(coach || s.available) && (
                                   <button onClick={() => book(s)}>
                                     {coach
